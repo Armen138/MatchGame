@@ -23,13 +23,94 @@ define("play", [
         return texCoords;
     }
     var Piece = function(x, y, type) {
+        var drop = false;
+        var offset = {X:0,Y:0};
+        var die = false;
+        var slide = 0;
+        var alpha = 1.0;
         var piece = {
             type: type || Math.random() * 3 | 0,
-            draw: function(x, y) {
+            update: function(d) {
+                var items = pieces.getItems();
+                if(items[x][y+1] && items[x][y+1].dead) {
+                    items[x][y] = items[x][y + 1];
+                    y++;                    
+                    items[x][y] = piece;
+                    piece.Y = y;
+                    drop = true;
+                    offset.Y += 32;
+                }
+                // var deadline = true;
+                // if(x > 1 && items[x - 1][y].dead) {                    
+                //     var dir = -1;
+                //     // if(x > items.length / 2) {
+                //     //     dir = -1;
+                //     // }
+                //     for(var yl = 0; yl < items[0].length; yl++) {
+                //         if(!items[x + dir][yl].dead) {
+                //             deadline = false;
+                //             break;
+                //         }
+                //     }
+                //     if(deadline) {
+                //         // items[x][y] = items[x + dir][y];
+                //         x += dir;
+                //         // items[x][y] = piece;
+                //         // piece.X = x;
+                //         slide = true;
+                //         offset.X = -32;
+                //     }
+                // }
+
+                if(slide !== 0) {
+                    offset.X += slide;
+                    if ((slide > 0 && offset.X > 0) ||
+                        (slide < 0 && offset.X < 0))  {
+                        offset.X = 0;
+                        slide = 0;
+                        //items[x - dir][y] = items[x][y];
+                        // piece.X = x;
+                        // items[x + 1][y] = items[x][y];
+                        // items[x][y] = piece;
+                    }
+                }
+                if(drop) {
+                    offset.Y -= d / 5;
+                    if(offset.Y < 0) {
+                        offset.Y = 0;
+                        drop = false;
+                    }
+                }
+                if(die) {
+                    alpha -= d / 200.0;
+                    if(alpha < 0) {
+                        alpha = 0;
+                        piece.dead = true;
+                        die = false;
+                    }
+                }
+            },
+            draw: function(d) {
+                if(!piece.dead) {
+                    piece.update(d);
+                    var texCoords = pieceByIndex(piece.type);
+                    Canvas.context.globalAlpha = alpha;
+                    Canvas.context.drawImage(Resources.bricks, texCoords.X, texCoords.Y, 32, 32, x*32 - offset.X, y*32 - offset.Y, 32, 32);                                            
+                    Canvas.context.globalAlpha = 1.0;
+                }
+            },
+            slide: function(direction) {   
+                var items = pieces.getItems();
+                slide = direction;
+                offset.X -= (32 * direction);
+                items[x][y] = items[x - direction][y];
+                x -= direction;
+                items[x][y] = piece;
                 piece.X = x;
-                piece.Y = y;
-                var texCoords = pieceByIndex(piece.type);
-                Canvas.context.drawImage(Resources.bricks, texCoords.X, texCoords.Y, 32, 32, x*32, y*32, 32, 32);
+            },
+            die: function() {
+                die = true;
+                // piece.dead = true;
             },
             X: x,
             Y: y
@@ -66,7 +147,11 @@ define("play", [
                     X: p.X + neighbors[i].X,
                     Y: p.Y + neighbors[i].Y
                 };
-                if(items[pf.X] && items[pf.X][pf.Y] && !have(f, items[pf.X][pf.Y]) && items[pf.X][pf.Y].type === items[p.X][p.Y].type) {
+                if (items[pf.X] && 
+                    items[pf.X][pf.Y] && 
+                    !items[pf.X][pf.Y].dead &&
+                    !have(f, items[pf.X][pf.Y]) && 
+                    items[pf.X][pf.Y].type === items[p.X][p.Y].type) {
                     friends(pf, f);
                 }
             }
@@ -81,13 +166,13 @@ define("play", [
             return null;
         }                   
         var p = {
-            draw: function() {
+            draw: function(d) {
                 Canvas.context.save();
                 Canvas.context.translate(gridOffset.X, gridOffset.Y);
                 for(var x = 0; x < 9; x++) {
                     for(var y = 0; y < 9; y++) {
                         if(items[x][y]) {
-                            items[x][y].draw(x, y);
+                            items[x][y].draw(d);
                         }                        
                     }
                 }                
@@ -101,44 +186,53 @@ define("play", [
             },
             pop: function(targets) {
                 for(var i = 0; i < targets.length; i++) {
-                    items[targets[i].X][targets[i].Y] = null;
+                    items[targets[i].X][targets[i].Y].die();// = null;
                 }
             },
-            drop: function() {                
-                var to = 0;
-                for(var x = 0; x < 9; x++) {
-                    for(var y = 8; y >= 0; y--) {
-                        if(items[x][y] !== null &&  items[x][y + 1] === null) {
-                            to = y + 1;
-                            for(var i = y + 1; i < 9; i++) {
-                                if(items[x][i] !== null) {
-                                    to = i - 1;
-                                    break;
-                                }
-                            };
-                            if(items[x][y]) {
-                                console.log(x + "," + y + "::" + items[x][y].type);
-                            }
-                            items[x][to] = items[x][y];
-                            items[x][y] = null; //Piece(x, y, 18);
-                            // console.log(items[x][y] === items[x][y + 1]);
+            getItems: function() {
+                return items;                
+            },
+            update: function() {   
+                // console.log("drop");
+                for(var x = 1; x < 8; x++) {
+                    var deadline = true;
+                    for(var y = 0; y < 9; y++) {
+                        if(!items[x][y].dead) {
+                            deadline = false;
+                            break;
                         }
                     }
-                }
+                    if(deadline) {
+                        var d = 1;
+                        if(x < 5) {
+                            d = -1;
+                        }                        
+                        for(var i = 0; i < 9; i++) {
+                            if(/*(x + d > 0 && x + d < 9) &&*/
+                                !items[x + d][i].dead) {
+                                items[x + d][i].slide(d);
+                            }
+                        }
+                    } 
+                }             
             }
         };
         return p;
     }());
+    var then = Date.now();
     var play = {
         init: function() {
 
         },
         run: function() {
+            var now = Date.now();
+            var d = now - then;
+            pieces.update();
             Canvas.context.drawImage(Resources.dirt, 0, 0);
-            Canvas.context.drawImage(Resources.grid, 0, 0);
-            pieces.draw();
+            // Canvas.context.drawImage(Resources.grid, 0, 0);
+            pieces.draw(d);
             Canvas.context.drawImage(Resources.grass, 0, 0);
-
+            then = now;
         },
         clear: function(cb) {
             cb();
@@ -153,12 +247,8 @@ define("play", [
                     Y: (mouse.Y - gridOffset.Y) / 32 | 0
                 };
                 var matched = pieces.match(brick);
-                if(matched && matched.length > 1) {
-                    // for(var i = 0; i < matched.length; i++) {
-                        pieces.pop(matched);
-                        console.log("drop");
-                        pieces.drop();
-                    // }                    
+                if(matched && matched.length > 1) {                    
+                    pieces.pop(matched);
                 }
             }
         }

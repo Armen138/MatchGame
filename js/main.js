@@ -186,7 +186,13 @@ require(["game",
                     // document.getElementById("credits").style.display = "block";
                     console.log("show credits");
                 }
-            }
+            },
+            {
+                label: "Highscores",
+                action: function() {
+                    game.state = null;                    
+                }
+            },            
         ], Resources.logo);
 
     window.addEventListener("blur", function() {
